@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI字幕翻译</title>
+<script>
+function submitForm(event) {
+  event.preventDefault();  // 阻止表单的默认提交事件
+  const form = event.target;  // 获取表单元素
+  const formData = new FormData(form);  // 利用表单数据构造 FormData 对象
+  const progressBox = document.getElementById('progressBox');  // 显示进度信息的盒子
+  const messageBox = document.getElementById('messageBox'); // 获取显示错误信息的盒子
+  progressBox.style.display = "block";
+  progressBox.innerHTML = "上传中...";
+
+  // 提交表单数据
+  fetch(form.action, {
+    method: 'POST',
+    body: formData,
+  })
+  .then(response => {
+    // 检查响应状态
+    if (!response.ok) {
+      // 如果响应状态不是200 OK，则解析并显示错误信息
+      return response.json().then(data => {
+        throw new Error(data.message || '上传失败');
+      });
+    }
+    progressBox.innerHTML = "上传完成，开始翻译...";
+    return response.blob();  // 假设响应体中有用于下载的内容
+  })
+  .then(blob => {
+    if(blob.size > 0) {
+      const url = window.URL.createObjectURL(blob);
+      const downloadBtn = document.getElementById('downloadBtn');
+      downloadBtn.href = url;
+      downloadBtn.download = 'translated_subtitles.srt';
+      downloadBtn.classList.remove('disabled');
+      downloadBtn.style.visibility = 'visible';
+      downloadBtn.textContent = '点此下载';
+    } else {
+      alert("下载失败，翻译结果为空");
+    }
+  })
+  .catch(error => {
+      // 显示错误信息
+    messageBox.style.display = 'block'; // 确保错误信息盒子是可见的
+    messageBox.innerHTML = error.message;
+    progressBox.innerHTML = '出错了: ' + error.message;
+  });
+
+  let translationStarted = false;
+  const startTime = new Date();
+  let endTime;
+
+  // 每秒请求翻译进度并更新进度信息
+  const intervalId = setInterval(() => {
+    fetch(`/translation_progress?_=${new Date().getTime()}`)
+    .then(response => response.json())
+    .then(data => {
+      if (!translationStarted && data.current_batch > 0) {
+        translationStarted = true;
+      }
+      updateProgressBar(data.current_batch, data.total_batches);
+      updateEstimatedTime(data.current_batch, data.total_batches, startTime, translationStarted);
+
+      if(data.current_batch >= data.total_batches && data.total_batches > 0) {
+        clearInterval(intervalId);
+        endTime = new Date(); // 记录翻译完成的时间
+        progressBox.innerHTML = "翻译完成";
+        updateEstimatedTime(data.current_batch, data.total_batches, startTime, translationStarted, endTime);
+      } else {
+        const progressInfo = `
+          当前翻译进度: 批次 ${data.current_batch} / ${data.total_batches}<br>
+          正在翻译原文: ${data.current_original_text}<br>
+          对应译文: ${data.current_translated_text}<br>
+          ${data.current_line_original ? `逐行翻译原文: ${data.current_line_original}` : ""}<br>
+          ${data.current_line_translated ? `逐行翻译译文: ${data.current_line_translated}` : ""}
+        `;
+        progressBox.innerHTML = progressInfo;
+      }
+    })
+    .catch(error => console.error('获取翻译进度失败：', error));
+  }, 1000);
+}
+
+function updateProgressBar(currentBatch, totalBatches) {
+  const progressBar = document.getElementById('progressBar');
+  const percentage = (currentBatch / totalBatches) * 100;
+  progressBar.style.width = percentage + '%';
+}
+
+function updateEstimatedTime(currentBatch, totalBatches, startTime, translationStarted, endTime = null) {
+  if (!translationStarted) {
+    document.getElementById('estimatedTime').innerHTML = '准备翻译...';
+    return;
+  }
+
+  const currentTime = endTime || new Date();
+  const elapsedTime = (currentTime - startTime) / 1000; // 转换为秒
+  if (endTime) {
+    document.getElementById('estimatedTime').innerHTML = '本次总耗时: ' + Math.round(elapsedTime) + ' 秒';
+  } else {
+    const estimatedTotalTime = elapsedTime * (totalBatches / Math.max(1, currentBatch));
+    const remainingTime = estimatedTotalTime - elapsedTime;
+    document.getElementById('estimatedTime').innerHTML = remainingTime > 0 ? '剩余时间估计: ' + Math.round(remainingTime) + ' 秒' : '计算中...';
+  }
+}
+
+document.getElementById('subtitleForm').addEventListener('submit', submitForm);
+</script>
+ <style>
+    #progressBox {
+    min-height: 120px; /* 适当调整高度以适应内容 */
+    display: block; /* 如果需要，确保它是块级元素 */
+}
+     body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    padding: 20px;
+    background-color: #f4f4f4;
+  }
+
+  h2 {
+    color: #333;
+  }
+
+  form {
+    background-color: #fff;
+    padding: 12px;
+    border-radius: 8px;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+  }
+
+  input[type="file"],
+  input[type="number"],
+  select,
+  textarea {
+    width: 100%;
+    padding: 10px;
+    margin-top: 2px;
+    margin-bottom: 2px;
+    border-radius: 5px;
+    border: 1px solid #ddd;
+    box-sizing: border-box; /* 让宽度包含padding和border */
+  }
+
+  input[type="submit"] {
+    background-color: #4CAF50;
+    color: white;
+    padding: 10px 20px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 16px;
+  }
+
+  input[type="submit"]:hover {
+    background-color: #45a049;
+  }
+
+  #progressBox,
+  #estimatedTime {
+    background-color: #e7f3fe;
+    color: #31708f;
+    padding: 10px;
+    margin-top: 20px;
+    border-radius: 5px;
+    display: block;
+  }
+
+  #progressContainer {
+    width: 100%;
+    background-color: #ddd;
+    border-radius: 5px;
+    margin-top: 20px;
+  }
+
+  #progressBar {
+    width: 0%;
+    height: 20px;
+    background-color: #4CAF50;
+    border-radius: 5px;
+  }
+
+  #downloadBtn {
+    display: inline-block;
+    margin-top: 20px;
+    padding: 10px 20px;
+    background-color: #008CBA;
+    color: white;
+    text-decoration: none;
+    border-radius: 5px;
+  }
+
+  #downloadBtn:hover {
+    background-color: #007B9E;
+  }
+
+  .disabled {
+    background-color: #cccccc;
+    cursor: not-allowed;
+  }
+</style>
+</head>
+<body>
+<h2>AI字幕翻译</h2>
+<form id="subtitleForm" action="/upload_subtitle" method="post" enctype="multipart/form-data" onsubmit="submitForm(event)">
+    <div id="messageBox" style="margin: 20px 0; padding: 10px; background-color: #f8d7da; color: #721c24; border-radius: 5px; display: none;"></div>
+<label for="subtitleFile">上传字幕文件(只支持.srt):</label>
+<input type="file" id="subtitleFile" name="subtitleFile" required><br><br>
+
+<label for="batchSize">一次翻译的排数 (1-30):</label>
+<input type="number" id="batchSize" name="batchSize" min="1" max="30" value="5" required><br><br>
+<label for="model">优先选择:</label>
+    <select id="model" name="model">
+        <option value="gpt-3.5-turbo">速度</option>
+        <option value="gpt-4-turbo-preview">质量</option>
+    </select><br><br>
+    <label for="languageSelect">选择目标语言:</label>
+<select id="languageSelect" name="language">
+<option value="Chinese">中文</option>
+<option value="Spanish">西班牙语</option>
+<option value="French">法语</option>
+<!-- 添加其他语言选项 -->
+</select><br><br>
+<label for="optionSelect">选择双语或单语字幕:</label>
+<select id="optionSelect" name="option">
+<option value="2">仅目标语言</option>
+<option value="1">双语（原语言+目标语言）</option>
+</select><br><br>
+<label for="configInput">电影额外信息 (比如主角名称，电影简介):</label>
+<textarea id="configInput" name="config" rows="4" cols="50"></textarea><br><br>
+<!-- 实时进度展示框 -->
+<div id="progressBox" style="margin: 20px 0; padding: 10px; background-color: #e7f3fe; color: #31708f; border-radius: 5px; display: none;"></div>
+    <div id="progressContainer" style="width: 100%; background-color: #ddd;">
+  <div id="progressBar" style="width: 0%; height: 20px; background-color: #4CAF50;"></div>
+</div>
+<div id="estimatedTime">剩余时间估计: 计算中...</div>
+    <br>
+<input type="submit" value="翻译字幕">
+
+
+</form>
+<!-- 下载按钮初始状态为隐藏 -->
+<a id="downloadBtn" class="disabled" href="#" style="visibility: hidden;">点击这里手动下载翻译文件</a>
+
+</body>
+</html>

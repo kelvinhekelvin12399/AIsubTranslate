@@ -1,4 +1,4 @@
-# AIsubTranslate
+# AI字幕翻译 AIsubTranslate
 "AI Subtitle Translator" is an open-source tool leveraging AI for efficient and accurate subtitle translation. It aims to break language barriers in video content, making it accessible globally. Join us to improve entertainment, education, and information accessibility.
 “AI Subtitle Translator”是一个开源工具，利用AI技术实现高效准确的字幕翻译。其目标是打破视频内容中的语言障碍，使其可以被全球访问。加入我们，一起提升娱乐、教育和信息的可获取性。
 下载之后自行配置OpenAI key
